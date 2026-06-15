@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from torchvision import transforms
 import argparse
 from unet_model import UNet
+import time
 
 def predict_image(model, image_path, device, threshold=0.5, output_dir="results", apply_postprocessing=True):
     """使用训练好的模型对单张图片进行裂缝检测"""
@@ -31,11 +32,13 @@ def predict_image(model, image_path, device, threshold=0.5, output_dir="results"
     img_tensor = transform(img).unsqueeze(0).to(device)  # 添加批次维度
     
     # 预测
+    start = time.perf_counter()
     model.eval()
     with torch.no_grad():
         output = model(img_tensor)
         pred = torch.sigmoid(output).squeeze().cpu().numpy()
-    
+    end = time.perf_counter()
+    print(f"耗时: {(end - start) * 1000:.2f} 毫秒")
     # 应用阈值
     binary_mask = (pred > threshold).astype(np.uint8)
     

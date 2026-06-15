@@ -165,8 +165,10 @@ def main():
     print(f'Output directory: {output_dir}')
     
     # 服务器路径
-    images_path = 'CRACK500/CRACK500/JPEGImages/images'
-    masks_path = 'CRACK500/CRACK500/Annotations/masks'
+    # images_path = 'CRACK500/CRACK500/JPEGImages/images'
+    # masks_path = 'CRACK500/CRACK500/Annotations/masks'
+    images_path = r'F:\chn\CN11002G251B019700020250721\images'
+    masks_path = r'F:\chn\CN11002G251B019700020250721\masks'
     
     # 数据预处理 
     transform = transforms.Compose([
@@ -203,7 +205,7 @@ def main():
     
     # 创建学习率调度器
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='min', factor=0.5, patience=10, verbose=True
+        optimizer, mode='min', factor=0.5, patience=10
     )
     
     # 训练模型
@@ -221,3 +223,16 @@ def main():
 
 if __name__ == '__main__':
     main() 
+
+    # import torch
+
+    # data = torch.load(r"D:\xwechat_files\huanat_0803\msg\file\2026-06\crack_server_zmq_final\crack_server_zmq_final-01.exe_extracted\crack_unet.pth", map_location="cpu")
+
+    # print(type(data))
+
+    # for k in data.keys():
+    #     print(k)
+
+    # for k,v in data.items():
+    #     if "weight" in k:
+    #         print(k, v.shape)
