@@ -1,3 +1,4 @@
 output_results/best_model.pth
+output_results/*.pth
 __pycache__/
 *.pyc
