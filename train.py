@@ -188,9 +188,7 @@ def main():
     full_dataset = CrackDataset(
         image_dir=images_path,
         mask_dir=masks_path,
-        # transform=transform,
-        transform=None,
-        patch_size=512,
+        transform=transform,
         augment=True  # 启用数据增强
     )
     
