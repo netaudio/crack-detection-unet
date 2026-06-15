@@ -9,6 +9,7 @@ import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
 from unet_model import UNet
+from eff_fpn_unet import EffFPNUNet
 from dataset import CrackDataset
 # os.environ["CUDA_VISIBLE_DEVICES"] = "1"  # 只使用第二个GPU  
 def dice_loss(pred, target):
@@ -99,6 +100,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
             print(f'Best model saved to {model_path}!')
         else:
             counter += 1
+            print(f'avg_val_loss: {avg_val_loss}, best_val_loss: {best_val_loss}')
             print(f'验证损失未改善。早停计数: {counter}/{patience}')
             if counter >= patience:
                 print(f'早停! 连续{patience}个周期未改善验证损失')
@@ -206,6 +208,7 @@ def main():
     
     # 创建模型
     model = UNet(in_channels=3, out_channels=1).to(device)
+    # model = EffFPNUNet(out_channels=1).to(device)
     
     # 定义损失函数和优化器
     criterion = lambda pred, target: 0.5 * nn.BCEWithLogitsLoss()(pred, target) + 0.5 * dice_loss(pred, target)
