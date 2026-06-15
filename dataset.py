@@ -28,10 +28,11 @@ class CrackDataset(Dataset):
         transform: 图像变换(通常用于调整大小和转为张量) | Image transformation (typically used for resizing and converting to tensors)
         augment: 是否启用数据增强 | Whether to enable data augmentation
     """
-    def __init__(self, image_dir, mask_dir, transform=None, augment=False):
+    def __init__(self, image_dir, mask_dir, transform=None, patch_size=512, augment=False):
         self.image_dir = image_dir
         self.mask_dir = mask_dir
         self.transform = transform
+        self.patch_size = patch_size
         self.augment = augment
         
         # 检查目录是否存在 | Check if directories exist
@@ -67,59 +68,103 @@ class CrackDataset(Dataset):
         return len(self.images)
     
     def __getitem__(self, idx):
-        """
-        获取单个样本(图像和对应掩码)，并应用数据增强
-        
-        注意: 
-        - 图像和掩码必须进行相同的几何变换以保持对齐
-        - 只对图像进行亮度和对比度调整
-        - 处理异常情况，确保训练过程不中断
-        
-        """
         try:
-            # 加载图像 | Load image
+            # 加载图像
             img_name = self.images[idx]
             img_path = os.path.join(self.image_dir, img_name)
-            
-            # 构建掩码路径 - 使用统一的命名规则 {base_name}_mask.png
-            # Build mask path - using unified naming rule {base_name}_mask.png
+
             base_name = os.path.splitext(img_name)[0]
             mask_name = base_name + "_mask.png"
             mask_path = os.path.join(self.mask_dir, mask_name)
-            
-            # 读取图像和掩码，并转换为合适的格式 | Read images and masks, and convert to appropriate format
-            image = Image.open(img_path).convert('RGB')  # 确保3通道 | Ensure 3 channels
-            mask = Image.open(mask_path).convert('L')    # 单通道灰度 | Single channel grayscale
-            
-            # 数据增强 (只在训练时随机应用) | Data augmentation (only randomly applied during training)
+
+            image = Image.open(img_path).convert('RGB')
+            mask = Image.open(mask_path).convert('L')
+
+            # =========================
+            # ✅ STEP 1: 转 numpy（方便 patch）
+            # =========================
+            image = np.array(image)
+            mask = np.array(mask)
+
+            h, w = image.shape[:2]
+
+            # =========================
+            # ✅ STEP 2: patch crop（核心新增）
+            # transform=None 或 resize=False 时启用
+            # =========================
+            if getattr(self, "patch_size", None) is not None:
+
+                ps = self.patch_size
+
+                if h < ps or w < ps:
+                    # 不够大就 padding（避免报错）
+                    pad_h = max(ps - h, 0)
+                    pad_w = max(ps - w, 0)
+
+                    image = np.pad(image,
+                                ((0, pad_h), (0, pad_w), (0, 0)),
+                                mode='reflect')
+                    mask = np.pad(mask,
+                                ((0, pad_h), (0, pad_w)),
+                                mode='reflect')
+
+                    h, w = image.shape[:2]
+
+                # 随机裁剪 patch
+                top = random.randint(0, h - ps)
+                left = random.randint(0, w - ps)
+
+                image = image[top:top + ps, left:left + ps]
+                mask = mask[top:top + ps, left:left + ps]
+
+            # =========================
+            # ✅ STEP 3: 数据增强（对齐处理）
+            # =========================
             if self.augment and random.random() > 0.5:
-                # 1. 随机旋转 - 裂缝可能以任何角度出现
-                # 1. Random rotation - cracks may appear at any angle
+
+                # 随机旋转
                 angle = random.choice([90, 180, 270])
-                image = image.rotate(angle)
-                mask = mask.rotate(angle)  # 掩码也需要相同旋转 | Mask also needs the same rotation
-                
-                # 2. 随机水平翻转 | 2. Random horizontal flip
+                image = Image.fromarray(image).rotate(angle)
+                mask = Image.fromarray(mask).rotate(angle)
+
                 if random.random() > 0.5:
                     image = image.transpose(Image.FLIP_LEFT_RIGHT)
                     mask = mask.transpose(Image.FLIP_LEFT_RIGHT)
-                    
-                # 3. 随机亮度、对比度调整(仅应用于图像，不应用于掩码)
-                # 3. Random brightness and contrast adjustment (only applied to images, not to masks)
+
+                image = np.array(image)
+                mask = np.array(mask)
+
+                # 亮度/对比度（只对image）
+                image = Image.fromarray(image)
+
                 enhancer = ImageEnhance.Brightness(image)
-                image = enhancer.enhance(random.uniform(0.8, 1.2))  # 亮度变化范围±20% | Brightness variation range ±20%
-                
+                image = enhancer.enhance(random.uniform(0.8, 1.2))
+
                 enhancer = ImageEnhance.Contrast(image)
-                image = enhancer.enhance(random.uniform(0.8, 1.2))  # 对比度变化范围±20% | Contrast variation range ±20%
-            
-            # 应用其他变换(尺寸调整、转为张量等) | Apply other transformations (resize, convert to tensor, etc.)
+                image = enhancer.enhance(random.uniform(0.8, 1.2))
+
+                image = np.array(image)
+
+            # =========================
+            # ✅ STEP 4: transform（可选）
+            # =========================
             if self.transform:
+                image = Image.fromarray(image)
+                mask = Image.fromarray(mask)
+
                 image = self.transform(image)
                 mask = self.transform(mask)
-            
-            # 确保掩码是二值的(0或1) | Ensure mask is binary (0 or 1)
-            mask = (mask > 0.5).float()  # 大于0.5的像素视为裂缝(1)，否则为背景(0) | Pixels greater than 0.5 are considered cracks (1), otherwise background (0)
-            
+
+            else:
+                # 如果 transform=None → 手动转 tensor
+                image = torch.from_numpy(image).permute(2, 0, 1).float() / 255.0
+                mask = torch.from_numpy(mask).unsqueeze(0).float() / 255.0
+
+            # =========================
+            # ✅ STEP 5: 二值化 mask
+            # =========================
+            mask = (mask > 0.5).float()
+
             return image, mask
             
         except Exception as e:
