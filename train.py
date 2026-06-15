@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
 from torchvision import transforms
+from torch.amp import autocast, GradScaler
 from tqdm import tqdm
 import numpy as np
 from PIL import Image
@@ -28,6 +29,9 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
     # 早停参数
     patience = 15
     counter = 0
+
+    # AMP
+    scaler = GradScaler("cuda")
     
     for epoch in range(num_epochs):
         # 训练阶段
@@ -36,17 +40,20 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         train_steps = 0
         
         for images, masks in tqdm(train_loader, desc=f'Epoch {epoch+1}/{num_epochs} [Train]'):
-            images = images.to(device)
-            masks = masks.to(device)
+            images = images.to(device, non_blocking=True)
+            masks = masks.to(device, non_blocking=True)
             
-            # 前向传播
-            outputs = model(images)
-            loss = criterion(outputs, masks)
-            
-            # 反向传播和优化
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+            optimizer.zero_grad(set_to_none=True)
+
+            with autocast(device_type="cuda"):
+                outputs = model(images)
+                loss = criterion(outputs, masks)
+
+            scaler.scale(loss).backward()
+
+            scaler.step(optimizer)
+
+            scaler.update()
             
             train_loss += loss.item()
             train_steps += 1
@@ -61,11 +68,12 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         
         with torch.no_grad():
             for images, masks in tqdm(val_loader, desc=f'Epoch {epoch+1}/{num_epochs} [Val]'):
-                images = images.to(device)
-                masks = masks.to(device)
-                
-                outputs = model(images)
-                loss = criterion(outputs, masks)
+                images = images.to(device, non_blocking=True)
+                masks = masks.to(device, non_blocking=True)
+
+                with autocast(device_type="cuda"):
+                    outputs = model(images)
+                    loss = criterion(outputs, masks)
                 
                 val_loss += loss.item()
                 val_steps += 1
@@ -172,7 +180,7 @@ def main():
     
     # 数据预处理 
     transform = transforms.Compose([
-        transforms.Resize((256, 256)),
+        transforms.Resize((512, 512)),
         transforms.ToTensor(),
     ])
     
@@ -193,8 +201,8 @@ def main():
     print(f'验证集大小: {len(val_dataset)}')
     
     # 创建数据加载器
-    train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=8)
-    val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False, num_workers=8)
+    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=8)
+    val_loader = DataLoader(val_dataset, batch_size=8, shuffle=False, num_workers=8)
     
     # 创建模型
     model = UNet(in_channels=3, out_channels=1).to(device)
