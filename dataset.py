@@ -118,7 +118,8 @@ class CrackDataset(Dataset):
                 mask = self.transform(mask)
             
             # 确保掩码是二值的(0或1) | Ensure mask is binary (0 or 1)
-            mask = (mask > 0.5).float()  # 大于0.5的像素视为裂缝(1)，否则为背景(0) | Pixels greater than 0.5 are considered cracks (1), otherwise background (0)
+            # mask = (mask > 0.5).float()  # 大于0.5的像素视为裂缝(1)，否则为背景(0) | Pixels greater than 0.5 are considered cracks (1), otherwise background (0)
+            mask = (mask > 0).float()  # 大于0.5的像素视为裂缝(1)，否则为背景(0) | Pixels greater than 0.5 are considered cracks (1), otherwise background (0)
             
             return image, mask
             
